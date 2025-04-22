@@ -24,21 +24,24 @@ import yara_utils
 import yara_tools
 import yara
 from sklearn.feature_extraction.text import TfidfVectorizer
+import time
+from datetime import datetime
 
+NASTYWARE_DIR = '/Users/Guilherme/Desktop/Academic/ITA/PROF/5oPeriodo/TG/nastyware-analyser-fork/'
 WORKING_DIR = '/archive/files/nastyware-files-mix/pipeline/' \
 '/'
-TRAIN_RAW_IMPORT_DIR = '/archive/files/nastyware-files-mix/pipeline/train-set/raw-import-files-mix/'
-TRAIN_FORMATED_IMPORT_DIR = '/archive/files/nastyware-files-mix/pipeline/train-set/formated-import-files-mix/'
-TRAIN_RAW_IMPORT_DIR_MALWARE = '/archive/files/nastyware-files-mix/pipeline/train-set/raw-import-files-malware/'
-TRAIN_RAW_IMPORT_DIR_GOODWARE = '/archive/files/nastyware-files-mix/pipeline/train-set/raw-import-files-goodware/'
+TRAIN_RAW_IMPORT_DIR = f'{WORKING_DIR}/train-set/raw-import-files-mix/'
+TRAIN_FORMATED_IMPORT_DIR = f'{WORKING_DIR}/train-set/formated-import-files-mix/'
+TRAIN_RAW_IMPORT_DIR_MALWARE = f'{WORKING_DIR}/train-set/raw-import-files-malware/'
+TRAIN_RAW_IMPORT_DIR_GOODWARE = f'{WORKING_DIR}/train-set/raw-import-files-goodware/'
 
-TEST_RAW_IMPORT_DIR = '/archive/files/nastyware-files-mix/pipeline/test-set/raw-import-files-mix/'
-TEST_RAW_IMPORT_DIR_MALWARE = '/archive/files/nastyware-files-mix/pipeline/test-set/raw-import-files-malware/'
-TEST_RAW_IMPORT_DIR_GOODWARE = '/archive/files/nastyware-files-mix/pipeline/test-set/raw-import-files-goodware/'
+TEST_RAW_IMPORT_DIR = f'{WORKING_DIR}/test-set/raw-import-files-mix/'
+TEST_RAW_IMPORT_DIR_MALWARE = f'{WORKING_DIR}/test-set/raw-import-files-malware/'
+TEST_RAW_IMPORT_DIR_GOODWARE = f'{WORKING_DIR}/test-set/raw-import-files-goodware/'
 
-DAMICORE_PYTHON_RESULTS_DIR = '/Users/Guilherme/Desktop/Academic/ITA/PROF/5oPeriodo/TG/nastyware-analyser-fork/pe-analyser/damicore-python/results/'
-PE_ANALYSER_DIR = '/Users/Guilherme/Desktop/Academic/ITA/PROF/5oPeriodo/TG/nastyware-analyser-fork/pe-analyser/'
-OUT_DIR = '/Users/Guilherme/Desktop/Academic/ITA/PROF/5oPeriodo/TG/nastyware-analyser-fork/pe-analyser/out/batch-test/'
+DAMICORE_PYTHON_RESULTS_DIR = f'{NASTYWARE_DIR}/pe-analyser/damicore-python/results/'
+PE_ANALYSER_DIR = f'{NASTYWARE_DIR}/pe-analyser/'
+OUT_DIR = f'{NASTYWARE_DIR}/pe-analyser/out/batch-test/'
 
 GOODWARE_IMPORT_FILE_DIRECTORIES = [
     '/archive/files/nastyware-files-mix/goodware-mix/',
@@ -61,17 +64,17 @@ MALWARE_IMPORT_FILE_DIRECTORIES = [
 TOTAL_GOODWARE_FILES = count_files_in_directories(GOODWARE_IMPORT_FILE_DIRECTORIES)
 TOTAL_MALWARE_FILES = count_files_in_directories(MALWARE_IMPORT_FILE_DIRECTORIES)
 
-NUMBER_OF_WORKING_GOODWARE_FILES = min(TOTAL_GOODWARE_FILES, TOTAL_MALWARE_FILES)
+NUMBER_OF_WORKING_GOODWARE_FILES = min(TOTAL_GOODWARE_FILES, TOTAL_GOODWARE_FILES)
 NUMBER_OF_WORKING_MALWARE_FILES = min(TOTAL_GOODWARE_FILES, TOTAL_MALWARE_FILES)
-
 
 TOTAL_WORKING_FILES = NUMBER_OF_WORKING_GOODWARE_FILES + NUMBER_OF_WORKING_MALWARE_FILES
 
-TRAIN_PERCENTAGES = [0.01]
+TRAIN_PERCENTAGES = [0.1]
 TRAIN_PERCENTAGES.reverse()
 
 def main():
     for train_val in TRAIN_PERCENTAGES:
+        prepare_samples_start_time = time.time()
         print('--------------------------------------------------')
         print(f'Iniciando treino com {train_val * 100}% de amostras para treinamento e {(1 - train_val) * 100}% para teste.')
         print('Limpando diretorios de trabalho...')
@@ -80,23 +83,40 @@ def main():
         print('Copiando amostras para o diretorio de trabalho...')
 
         copy_random_files(GOODWARE_IMPORT_FILE_DIRECTORIES, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_GOODWARE], [TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_GOODWARE], train_val)
-        copy_random_files(MALWARE_IMPORT_FILE_DIRECTORIES, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_MALWARE], [TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_MALWARE], train_val) #CHANGE LATER
+        copy_random_files(MALWARE_IMPORT_FILE_DIRECTORIES, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_MALWARE], [TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_MALWARE], train_val)
 
         print('Formatando amostras...')
         format_import_files(TRAIN_RAW_IMPORT_DIR, TRAIN_FORMATED_IMPORT_DIR)
 
+        prepare_samples_end_time = time.time()
+        prepare_samples_time = prepare_samples_end_time - prepare_samples_start_time
+
+        coss_distance_start_time = time.time()
         print('Criando matriz de distancias do treinamento...')
         create_phylip_coss_distance(TRAIN_FORMATED_IMPORT_DIR, os.path.join(DAMICORE_PYTHON_RESULTS_DIR, 'ncd-matrix.phylip'))
+        
+        coss_distance_end_time = time.time()
+        coss_distance_time = coss_distance_end_time - coss_distance_start_time
 
         print('Rodando o damicore...')
         os.chdir(PE_ANALYSER_DIR)
+
+        damicore_start_time = time.time()
         ret = os.system(f'python ./pe-analyser.py --folder {TRAIN_FORMATED_IMPORT_DIR}/')
         if ret != 0:
             print('Erro ao rodar o pe-analyser.')
             sys.exit(1)
 
+        damicore_end_time = time.time()
+        damicore_time = damicore_end_time - damicore_start_time
+
         print('Avaliando o desempenho de um decision tree classifier...')
+        best_epsilon_start_time = time.time()
         classifiers, acc_dt, acc_mw_dt, acc_gw_dt = get_accuracy_epsilon_curve(TRAIN_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR)
+        
+        best_epsilon_end_time = time.time()
+        best_epsilon_time = best_epsilon_end_time - best_epsilon_start_time
+
         print('Copiando os resultados...')
         shutil.copyfile(os.path.join(DAMICORE_PYTHON_RESULTS_DIR, 'ncd-matrix.phylip'), os.path.join(OUT_DIR, f'dist-matrix-{train_val}.phylip'))
         shutil.copyfile(os.path.join(PE_ANALYSER_DIR, 'node_clustering_fastgreedy.txt'), os.path.join(OUT_DIR, f'node_clustering{train_val}.txt'))
@@ -107,7 +127,7 @@ def main():
             f.write(f'accuracy malware: {acc_mw_dt}\n')
             f.write(f'accuracy goodware: {acc_gw_dt}\n')
         
-        # Generate YARA Rules for the most accurate DT classifier
+        # Retrieving clusters and best epsilon
 
         with open(os.path.join(OUT_DIR, f'accuracy-{train_val}.txt'), 'r') as f:
             lines = f.readlines()
@@ -147,6 +167,7 @@ def main():
         rest_df = yara_utils.ld_data(func_dict, TRAIN_RAW_IMPORT_DIR, [f for f in os.listdir(TRAIN_RAW_IMPORT_DIR) if not any([f in cluster for cluster in mostly_malware_clusters])], '-1')
         df = pd.concat([rest_df] + malware_clusters_df, ignore_index=True)
 
+        generate_yara_start_time = time.time()
         n_nodes = best_classifier.tree_.node_count
         children_left = best_classifier.tree_.children_left
         children_right = best_classifier.tree_.children_right
@@ -210,11 +231,18 @@ def main():
             .replace("\t", "")\
             .replace("\n", "")
 
-        print(file_content)
         with open(f'{fn}.drv.yar', 'w') as f:
             f.write(file_content[1:])
 
+        generate_yara_end_time = time.time()
 
+        TIME_DIR = os.path.join(OUT_DIR, 'time/')
+        with open(f'{TIME_DIR}/time-{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.txt', 'w') as f:
+            f.write(f'prepare_samples_time: {prepare_samples_time}\n')
+            f.write(f'coss_distance_time: {coss_distance_time}\n')
+            f.write(f'damicore_time: {damicore_time}\n')
+            f.write(f'best_epsilon_time: {best_epsilon_time}\n')
+            f.write(f'generate_yara_time: {generate_yara_end_time - generate_yara_start_time}\n')
         
 
 
