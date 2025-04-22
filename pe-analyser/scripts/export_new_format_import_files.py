@@ -8,6 +8,7 @@ from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 import matplotlib.pyplot as plt
+import argparse
 
 func_dict = {}
 
@@ -52,7 +53,7 @@ def format_import_files(train_dt_dir_name, export_dt_dir_name):
     train_vectors = vectorizer.fit_transform(train['funcs'])
 
     with open('feature_names.txt', 'w') as f:
-        for feature in vectorizer.get_feature_names():
+        for feature in vectorizer.get_feature_names_out():
             f.write(feature + '\n')
 
     for index, row in train.iterrows():
@@ -61,3 +62,14 @@ def format_import_files(train_dt_dir_name, export_dt_dir_name):
         with open(os.path.join(export_dt_dir_name, filename), 'w') as f:
             # write train_vectors list as a string in the file
             f.write(''.join([str(x) * 1 for x in train_vectors[index].toarray()[0]]))
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--directory', help='Directory of input files', required=True)
+    #parser.add_argument('-o', '--output', help='file to output features', default="./features")
+    args = parser.parse_args()  
+
+    format_import_files(args.directory, "./features")
+
+if __name__ == '__main__':
+    main()

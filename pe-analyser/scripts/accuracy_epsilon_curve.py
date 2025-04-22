@@ -11,11 +11,11 @@ from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 
-TRAIN_DIR = '/archive/files/nastyware-files-mix/mix-import/'
-TEST_DIR = ''
+TRAIN_DIR = '/archive/files/nastyware-files-mix/pipeline/train-set/raw-import-files-mix'
+TEST_DIR = '/archive/files/nastyware-files-mix/pipeline/test-set/raw-import-files-mix'
 # TRAIN_DIR = '/archive/files/import-small-dir/'
-TEST_MALWARE_DIR = '/archive/files/nastyware-files/import-malware-bazaar-2021-03-to-2021-04/'
-TEST_GOODWARE_DIR = '/archive/files/nastyware-files/import-windows-server-2019/'
+#TEST_MALWARE_DIR = '/archive/files/nastyware-files/import-malware-bazaar-2021-03-to-2021-04/'
+#TEST_GOODWARE_DIR = '/archive/files/nastyware-files/import-windows-server-2019/'
 
 acc_dt = []
 acc_mw_dt = []
@@ -134,7 +134,7 @@ def dt_classification(mostly_malware_clusters, epsilon):
     pred_gw = ['MALWARE' if p != '-1' else 'GOODWARE' for p in pred_gw]
     pred = ['MALWARE' if p != '-1' else 'GOODWARE' for p in pred]
 
-    return accuracy_score(test_df['label'], pred), accuracy_score(test_mw['label'], pred_mw), accuracy_score(test_gw['label'], pred_gw)
+    return classifier, accuracy_score(test_df['label'], pred), accuracy_score(test_mw['label'], pred_mw), accuracy_score(test_gw['label'], pred_gw)
 
 def sd_classification(epsilon):
     plus = [plus_functions(TRAIN_DIR, cluster) for cluster in mostly_malware_clusters]
@@ -200,10 +200,12 @@ def get_accuracy_epsilon_curve(train_dir, test_dir):
     pool.join()
 
     epsilons = []
+    classifiers = {}
 
     while not queue.empty():
-        epsilon, (acc, acc_mw, acc_gw) = queue.get()
+        epsilon, (classifier, acc, acc_mw, acc_gw) = queue.get()
         epsilons.append(epsilon)
+        classifiers[round(10*epsilon) - 1] = classifier
         acc_dt.append(acc)
         acc_mw_dt.append(acc_mw)
         acc_gw_dt.append(acc_gw)
@@ -226,7 +228,7 @@ def get_accuracy_epsilon_curve(train_dir, test_dir):
     plt.ylabel('Accuracy')
     plt.legend()
     plt.savefig(f'out/epsilon_accuracy_{cluster_alg}.png')
-    return acc_dt, acc_mw_dt, acc_gw_dt
+    return classifiers, acc_dt, acc_mw_dt, acc_gw_dt
 
 
 if __name__ == '__main__':
@@ -249,7 +251,7 @@ if __name__ == '__main__':
                 if malware_count >= epsilon * len(cluster):
                     mostly_malware_clusters.append(cluster)
 
-        acc_tot, acc_mw, acc_gw = dt_classification(epsilon)
+        acc_tot, acc_mw, acc_gw = dt_classification(mostly_malware_clusters,epsilon)
         acc_dt.append(acc_tot)
         acc_mw_dt.append(acc_mw)
         acc_gw_dt.append(acc_gw)

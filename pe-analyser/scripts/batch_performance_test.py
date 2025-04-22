@@ -22,9 +22,9 @@ from create_phylip_coss_distance import create_phylip_coss_distance
 from accuracy_epsilon_curve import get_accuracy_epsilon_curve
 
 WORKING_DIR = '/archive/files/nastyware-files-mix/batch-performance-test/'
-TRAIN_RAW_IMPORT_DIR = '/archive/files/nastyware-files-mix/batch-performance-test/train-set/raw-import-files/'
-TRAIN_FORMATED_IMPORT_DIR = '/archive/files/nastyware-files-mix/batch-performance-test/train-set/formated-import-files'
-TEST_RAW_IMPORT_DIR = '/archive/files/nastyware-files-mix/batch-performance-test/test-set/raw-import-files/'
+TRAIN_RAW_IMPORT_DIR = '/archive/files/nastyware-files-mix/batch-performance-test/train-set/raw-import-files-mix/'
+TRAIN_FORMATED_IMPORT_DIR = '/archive/files/nastyware-files-mix/batch-performance-test/train-set/formated-import-files-mix'
+TEST_RAW_IMPORT_DIR = '/archive/files/nastyware-files-mix/batch-performance-test/test-set/raw-import-files-mix/'
 
 DAMICORE_PYTHON_RESULTS_DIR = '/home/joao/my/projects/nastyware-analyser/pe-analyser/damicore-python/results'
 PE_ANALYSER_DIR = '/home/joao/my/projects/nastyware-analyser/pe-analyser'

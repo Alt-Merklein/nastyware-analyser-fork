@@ -23,7 +23,7 @@ def create_dist_matrix(directory):
         
         fname1 = os.path.join(directory, files[i])
         f1 = open(fname1, 'rb').read()
-        f1 = np.fromiter(map(int, list(f1.decode())), dtype=np.uint8)
+        f1 = np.fromiter(map(int, list(f1.decode())), dtype=np.uint32)
 
         num_cpus = mp.cpu_count()
         pool = mp.Pool(num_cpus)
@@ -47,7 +47,7 @@ def create_dist_matrix(directory):
 
 def calculate_cosine_distance(f1, fname2, j, queue):
     f2 = open(fname2, 'rb').read()
-    f2 = np.fromiter(map(int, list(f2.decode())), dtype=np.uint8)
+    f2 = np.fromiter(map(int, list(f2.decode())), dtype=np.uint32)
     dist = cosine(f1, f2)
     queue.put((j, dist))
 
