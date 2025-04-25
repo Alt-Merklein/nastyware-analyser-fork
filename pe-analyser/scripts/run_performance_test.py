@@ -27,8 +27,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import time
 from datetime import datetime
 import argparse
-from performance_test_utils import valid_folder, folder_exists
-
+from performance_test_utils import valid_folder, folder_exists, format_new_malware, copy_new_samples
+import csv
 
 #NASTYWARE_DIR = '/Users/Guilherme/Desktop/Academic/ITA/PROF/5oPeriodo/TG/nastyware-analyser-fork/'
 #WORKING_DIR = '/archive/files/nastyware-files-mix/pipeline/' \
@@ -72,12 +72,14 @@ from performance_test_utils import valid_folder, folder_exists
 
 #TOTAL_WORKING_FILES = NUMBER_OF_WORKING_GOODWARE_FILES + NUMBER_OF_WORKING_MALWARE_FILES
 
-
+#EXTRA_AMOUNT = 10
+#EXTRA_MALWARE_FOLDER = '/archive/files/nastyware-files-mix/extra-malware/'
 
 def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR, 
          TRAIN_RAW_IMPORT_DIR, TRAIN_FORMATED_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_MALWARE, 
          TRAIN_RAW_IMPORT_DIR_GOODWARE, TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_MALWARE, 
-         TEST_RAW_IMPORT_DIR_GOODWARE, GOODWARE_IMPORT_FILE_DIRECTORIES, MALWARE_IMPORT_FILE_DIRECTORIES):
+         TEST_RAW_IMPORT_DIR_GOODWARE, GOODWARE_IMPORT_FILE_DIRECTORIES, MALWARE_IMPORT_FILE_DIRECTORIES,
+         EXTRA_AMOUNT, EXTRA_MALWARE_FOLDER, CSV_OUTPUT):
 
     DAMICORE_PYTHON_RESULTS_DIR = f'{NASTYWARE_DIR}/pe-analyser/damicore-python/results/'
     PE_ANALYSER_DIR = f'{NASTYWARE_DIR}/pe-analyser/'
@@ -91,6 +93,9 @@ def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR,
 
     TOTAL_WORKING_FILES = NUMBER_OF_WORKING_GOODWARE_FILES + NUMBER_OF_WORKING_MALWARE_FILES
     
+    #format_new_malware(EXTRA_MALWARE_FOLDER) Opcional, mas é bom rodar uma vez após copiar os malwares para o diretorio de trabalho
+    #exit(0)
+
     train_val = TRAIN_PERCENTAGE
     prepare_samples_start_time = time.time()
     print('--------------------------------------------------')
@@ -102,6 +107,7 @@ def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR,
 
     copy_random_files(GOODWARE_IMPORT_FILE_DIRECTORIES, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_GOODWARE], [TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_GOODWARE], train_val)
     copy_random_files(MALWARE_IMPORT_FILE_DIRECTORIES, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_MALWARE], [TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_MALWARE], train_val)
+    copy_new_samples(EXTRA_MALWARE_FOLDER, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_MALWARE], EXTRA_AMOUNT)
 
     print('Formatando amostras...')
     format_import_files(TRAIN_RAW_IMPORT_DIR, TRAIN_FORMATED_IMPORT_DIR)
@@ -253,14 +259,38 @@ def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR,
         f.write(file_content[1:])
 
     generate_yara_end_time = time.time()
+    
 
-    TIME_DIR = os.path.join(OUT_DIR, 'time/')
-    with open(f'{TIME_DIR}/time-{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.txt', 'w') as f:
-        f.write(f'prepare_samples_time: {prepare_samples_time}\n')
-        f.write(f'coss_distance_time: {coss_distance_time}\n')
-        f.write(f'damicore_time: {damicore_time}\n')
-        f.write(f'best_epsilon_time: {best_epsilon_time}\n')
-        f.write(f'generate_yara_time: {generate_yara_end_time - generate_yara_start_time}\n')
+    # Save Results to CSV
+    csv_path = CSV_OUTPUT
+    write_header = not os.path.exists(csv_path)
+    with open(csv_path, 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        if write_header:
+            writer.writerow([
+                'extra_amount',
+                'prepare_samples_time',
+                'coss_distance_time',
+                'damicore_time',
+                'best_epsilon_time',
+                'generate_yara_time'
+            ])
+        writer.writerow([
+            EXTRA_AMOUNT,
+            prepare_samples_time,
+            coss_distance_time,
+            damicore_time,
+            best_epsilon_time,
+            generate_yara_end_time - generate_yara_start_time
+        ])
+
+    #TIME_DIR = os.path.join(OUT_DIR, 'time/')
+    #with open(f'{TIME_DIR}/time-{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.txt', 'w') as f:
+    #    f.write(f'prepare_samples_time: {prepare_samples_time}\n')
+    #    f.write(f'coss_distance_time: {coss_distance_time}\n')
+    #    f.write(f'damicore_time: {damicore_time}\n')
+    #    f.write(f'best_epsilon_time: {best_epsilon_time}\n')
+    #    f.write(f'generate_yara_time: {generate_yara_end_time - generate_yara_start_time}\n')
         
 
 
@@ -278,6 +308,11 @@ if __name__ == '__main__':
     parser.add_argument('--test_raw_import_dir_goodware', type=folder_exists, help='Temporary directory to store copied test files (goodware only)', required=True)
     parser.add_argument('--goodware_import_file_directories', type=valid_folder, help='Directories with all goodware import files that may be used for train/test', required=True, nargs='+')
     parser.add_argument('--malware_import_file_directories', type=folder_exists, help='Directories with all malware import files that may be used for train/test', required=True, nargs= '+')
+    parser.add_argument('--extra_amount', type=int, help='Amount of extra malware to use on test', required=True)
+    parser.add_argument('--extra_malware_folder', type=folder_exists, help='Folder with extra malware to use on training', required=True)
+    parser.add_argument('--append_csv', type=str, help='CSV file to store results', required=True)
+
+
     args = parser.parse_args()
 
     main(
@@ -286,5 +321,6 @@ if __name__ == '__main__':
         args.train_raw_import_dir_malware, args.train_raw_import_dir_goodware,
         args.test_raw_import_dir, args.test_raw_import_dir_malware,
         args.test_raw_import_dir_goodware, args.goodware_import_file_directories,
-        args.malware_import_file_directories
+        args.malware_import_file_directories,
+        args.extra_amount, args.extra_malware_folder, args.append_csv
     )
