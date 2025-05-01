@@ -14,21 +14,23 @@
 import os
 import sys
 import time
+from datetime import datetime
 import random
+import pandas as pd
 import numpy as np
-from batch_performance_test_utils import *
-from export_new_format_import_files import format_import_files
-from create_phylip_coss_distance import create_phylip_coss_distance
-from accuracy_epsilon_curve import get_accuracy_epsilon_curve
-import yara_utils
+import argparse
+import csv
+import shutil
 import yara_tools
 import yara
 from sklearn.feature_extraction.text import TfidfVectorizer
-import time
-from datetime import datetime
-import argparse
+
+from accuracy_epsilon_curve import get_accuracy_epsilon_curve
+from batch_performance_test_utils import *
+from create_phylip_coss_distance import create_phylip_coss_distance
+from export_new_format_import_files import format_import_files
 from performance_test_utils import valid_folder, folder_exists, format_new_malware, copy_new_samples
-import csv
+import yara_utils
 
 #NASTYWARE_DIR = '/Users/Guilherme/Desktop/Academic/ITA/PROF/5oPeriodo/TG/nastyware-analyser-fork/'
 #WORKING_DIR = '/archive/files/nastyware-files-mix/pipeline/' \
@@ -79,7 +81,14 @@ def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR,
          TRAIN_RAW_IMPORT_DIR, TRAIN_FORMATED_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_MALWARE, 
          TRAIN_RAW_IMPORT_DIR_GOODWARE, TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_MALWARE, 
          TEST_RAW_IMPORT_DIR_GOODWARE, GOODWARE_IMPORT_FILE_DIRECTORIES, MALWARE_IMPORT_FILE_DIRECTORIES,
-         EXTRA_AMOUNT, EXTRA_MALWARE_FOLDER, CSV_OUTPUT):
+         EXTRA_AMOUNT, EXTRA_MALWARE_FOLDER, CSV_OUTPUT, SEED):
+
+# ——————— Reprodutibilidade ———————
+    seed = SEED
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+# ————————————————————————————————
 
     DAMICORE_PYTHON_RESULTS_DIR = f'{NASTYWARE_DIR}/pe-analyser/damicore-python/results/'
     PE_ANALYSER_DIR = f'{NASTYWARE_DIR}/pe-analyser/'
@@ -93,8 +102,9 @@ def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR,
 
     TOTAL_WORKING_FILES = NUMBER_OF_WORKING_GOODWARE_FILES + NUMBER_OF_WORKING_MALWARE_FILES
     
-    #format_new_malware(EXTRA_MALWARE_FOLDER) Opcional, mas é bom rodar uma vez após copiar os malwares para o diretorio de trabalho
-    #exit(0)
+    # print("Formating new malwares")
+    # format_new_malware(EXTRA_MALWARE_FOLDER) # Opcional, mas é bom rodar uma vez após copiar os malwares para o diretorio de trabalho
+    # exit(0)
 
     train_val = TRAIN_PERCENTAGE
     prepare_samples_start_time = time.time()
@@ -108,6 +118,7 @@ def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR,
     copy_random_files(GOODWARE_IMPORT_FILE_DIRECTORIES, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_GOODWARE], [TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_GOODWARE], train_val)
     copy_random_files(MALWARE_IMPORT_FILE_DIRECTORIES, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_MALWARE], [TEST_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR_MALWARE], train_val)
     copy_new_samples(EXTRA_MALWARE_FOLDER, [TRAIN_RAW_IMPORT_DIR, TRAIN_RAW_IMPORT_DIR_MALWARE], EXTRA_AMOUNT)
+    total_raw_samples = len(os.listdir(TRAIN_RAW_IMPORT_DIR))
 
     print('Formatando amostras...')
     format_import_files(TRAIN_RAW_IMPORT_DIR, TRAIN_FORMATED_IMPORT_DIR)
@@ -136,7 +147,7 @@ def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR,
 
     print('Avaliando o desempenho de um decision tree classifier...')
     best_epsilon_start_time = time.time()
-    classifiers, acc_dt, acc_mw_dt, acc_gw_dt = get_accuracy_epsilon_curve(TRAIN_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR)
+    classifiers, acc_dt, acc_mw_dt, acc_gw_dt = get_accuracy_epsilon_curve(TRAIN_RAW_IMPORT_DIR, TEST_RAW_IMPORT_DIR, seed)
     
     best_epsilon_end_time = time.time()
     best_epsilon_time = best_epsilon_end_time - best_epsilon_start_time
@@ -268,15 +279,19 @@ def main(TRAIN_PERCENTAGE, NASTYWARE_DIR, WORKING_DIR,
         writer = csv.writer(csvfile)
         if write_header:
             writer.writerow([
+                'total_raw_samples',
                 'extra_amount',
+                'train_percentage',
                 'prepare_samples_time',
                 'coss_distance_time',
                 'damicore_time',
                 'best_epsilon_time',
-                'generate_yara_time'
+                'generate_yara_time',
             ])
         writer.writerow([
+            total_raw_samples,
             EXTRA_AMOUNT,
+            train_val,
             prepare_samples_time,
             coss_distance_time,
             damicore_time,
@@ -311,16 +326,26 @@ if __name__ == '__main__':
     parser.add_argument('--extra_amount', type=int, help='Amount of extra malware to use on test', required=True)
     parser.add_argument('--extra_malware_folder', type=folder_exists, help='Folder with extra malware to use on training', required=True)
     parser.add_argument('--append_csv', type=str, help='CSV file to store results', required=True)
+    parser.add_argument('--seed', type=int, default=42, help="Set seed for the random elements", required=True)
 
 
     args = parser.parse_args()
 
     main(
-        args.train_percentage, args.nastyware_dir, args.working_dir,
-        args.train_raw_import_dir, args.train_formated_import_dir,
-        args.train_raw_import_dir_malware, args.train_raw_import_dir_goodware,
-        args.test_raw_import_dir, args.test_raw_import_dir_malware,
-        args.test_raw_import_dir_goodware, args.goodware_import_file_directories,
+        args.train_percentage,
+        args.nastyware_dir,
+        args.working_dir,
+        args.train_raw_import_dir,
+        args.train_formated_import_dir,
+        args.train_raw_import_dir_malware, 
+        args.train_raw_import_dir_goodware,
+        args.test_raw_import_dir, 
+        args.test_raw_import_dir_malware,
+        args.test_raw_import_dir_goodware, 
+        args.goodware_import_file_directories,
         args.malware_import_file_directories,
-        args.extra_amount, args.extra_malware_folder, args.append_csv
+        args.extra_amount, 
+        args.extra_malware_folder, 
+        args.append_csv,
+        args.seed
     )

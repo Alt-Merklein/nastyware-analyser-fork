@@ -11,6 +11,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 
+SEED = None
 TRAIN_DIR = '/archive/files/nastyware-files-mix/pipeline/train-set/raw-import-files-mix'
 TEST_DIR = '/archive/files/nastyware-files-mix/pipeline/test-set/raw-import-files-mix'
 # TRAIN_DIR = '/archive/files/import-small-dir/'
@@ -112,7 +113,7 @@ def dt_classification(mostly_malware_clusters, epsilon):
 
     vectorizer = TfidfVectorizer()
     df_vectors = vectorizer.fit_transform(df['funcs']).ceil()
-    classifier = DecisionTreeClassifier(criterion='entropy')
+    classifier = DecisionTreeClassifier(criterion='entropy', random_state=SEED)
     classifier.fit(df_vectors, df['label'])
 
     if TEST_DIR != '':
@@ -167,10 +168,16 @@ def get_accuracy(clusters, epsilon, queue):
 
     queue.put((epsilon, dt_classification(mostly_malware_clusters.copy(), epsilon)))
 
-def get_accuracy_epsilon_curve(train_dir, test_dir):
+def get_accuracy_epsilon_curve(train_dir, test_dir, seed):
     global TRAIN_DIR
     global TEST_DIR
     global mostly_malware_clusters
+    global SEED
+
+# ——————— Reprodutibilidade ———————
+    SEED = seed
+    np.random.seed(SEED)
+# —————————————————————————————————
 
     TRAIN_DIR = train_dir
     TEST_DIR = test_dir
