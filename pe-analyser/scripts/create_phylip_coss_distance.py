@@ -1,56 +1,57 @@
 import os
+import sys
 import argparse
 import numpy as np
 from scipy.spatial.distance import cosine
 
 # Paralell libraries
-import multiprocessing as mp
+from multiprocessing import Pool
 
-def create_dist_matrix(directory):
-    """
-        Creates a distance matrix from a directory of files using Cosine Distance
-        directory: Directory containing files to compare 2 by 2
-        return: Distance matrix and order of files used
-    """
 
-    files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
-    dist_matrix = np.zeros((len(files), len(files)))
+# Global variable to store vectors
+vectors = None
+
+def init_pool(v):
+    """Initialize the pool with the global vectors."""
+    global vectors
+    vectors = v
+
+def calculate_cosine(index_pair):
+    """Calculate cosine distance between two vectors."""
+    i, j = index_pair
+    return (i, j, cosine(vectors[i], vectors[j]))
+
+def load_vectors_from_files(directory, files):
+    """Load vectors from files in the specified directory."""
+    paths = [os.path.join(directory, f) for f in files]
+    vectors = []
+
+    for path in paths:
+        with open(path, 'r') as f:
+            content = f.read().strip()  # Ex: "010110"
+            vector = np.fromiter(map(int, content), dtype=np.uint32)
+            vectors.append(vector)
+
+    return vectors
+
+def extract_index_from_phylip(phylip_path):
+    """Extracts index of a distance matrix from a phylip file"""
+    with open(phylip_path, 'r') as f:
+        lines = f.readlines()[1:] # Pula linha com quantidade de arquivos
+
+    nomes = []
+    matriz = []
+
+    for line in lines:
+        if line.strip():
+            partes = line.strip().split()
+            nome = partes[0]
+            distancias = list(map(float, partes[1:]))
+
+            nomes.append(nome)
+            matriz.append(distancias)
     
-
-
-    for i in range(0, len(files) - 1):
-        print(f"Processing {i} / {len(files)}", end='\r')
-        
-        fname1 = os.path.join(directory, files[i])
-        f1 = open(fname1, 'rb').read()
-        f1 = np.fromiter(map(int, list(f1.decode())), dtype=np.uint32)
-
-        num_cpus = mp.cpu_count()
-        pool = mp.Pool(num_cpus)
-        manager = mp.Manager()
-        queue = manager.Queue()
-
-        for j in range(i + 1, len(files)):
-            pool.apply_async(calculate_cosine_distance, args=(f1, os.path.join(directory, files[j]), j, queue))
-
-        pool.close()
-        pool.join()
-
-        while not queue.empty():
-            result = queue.get()
-            dist_matrix[i][result[0]] = result[1]
-            dist_matrix[result[0]][i] = result[1]
-
-    print()
-
-    return dist_matrix, files
-
-def calculate_cosine_distance(f1, fname2, j, queue):
-    f2 = open(fname2, 'rb').read()
-    f2 = np.fromiter(map(int, list(f2.decode())), dtype=np.uint32)
-    dist = cosine(f1, f2)
-    queue.put((j, dist))
-
+    return nomes, np.array(matriz, dtype=np.float32)
 
 def export_phylip_file(dist_matrix, filename_order, output_file):
     """
@@ -68,20 +69,117 @@ def export_phylip_file(dist_matrix, filename_order, output_file):
                 f.write(str(dist_matrix[i][j]) + " ")
             f.write("\n")
 
+def create_dist_matrix_from_zero(formated_directory, files):
+    """
+        Creates a new distance matrix from a directory of files using parallelized Cosine Distance
+        directory: Directory containing files to compare 2 by 2
+        return: Distance matrix and order of files used
+    """
+
+    vecs = load_vectors_from_files(formated_directory, files)
+    n = len(vecs)
+    indices = [(i, j) for i in range(n) for j in range(i + 1, n)]
+    dist_matrix = np.zeros((n, n), dtype=np.float32)
+
+    with Pool(initializer=init_pool, initargs=(vecs,)) as pool:
+        results = pool.map(calculate_cosine, indices)
+
+    for i, j, d in results:
+        dist_matrix[i][j] = d
+        dist_matrix[j][i] = d
+
+    return dist_matrix, files
+
+def update_existing_matrix(directory, old_files, old_matrix, new_files):
+    """
+        Updates an existing distance matrix with new files using parallelized Cosine Distance\n
+        directory: Directory containing files to compare 2 by 2;
+        old_files: List of files already processed;
+        old_matrix: Distance matrix already calculated;
+        new_files: List of new files to be added;
+        return: Updated distance matrix and all files used.
+    """
+    all_files = old_files + new_files
+    all_vectors = load_vectors_from_files(directory, all_files)
+
+    n_old = len(old_files)
+    n_new = len(new_files)
+    n_total = len(all_files)
+
+    updated_matrix = np.zeros((n_total, n_total), dtype=np.float32)
+    updated_matrix[:n_old, :n_old] = old_matrix  # mantém as distâncias antigas
+
+    # pares (novo vs novo) e (novo vs antigo)
+    indices = []
+    for i in range(n_old, n_total):
+        for j in range(0, i):
+            indices.append((i, j))
+
+    with Pool(initializer=init_pool, initargs=(all_vectors,)) as pool:
+        results = pool.map(calculate_cosine, indices)
+
+    for i, j, d in results:
+        updated_matrix[i][j] = d
+        updated_matrix[j][i] = d
+
+    return updated_matrix, all_files
+
+
 def create_phylip_coss_distance(directory, output_file):
-    dist_matrix, filename_order = create_dist_matrix(directory)
-    export_phylip_file(dist_matrix, filename_order, output_file)
+    """
+        Creates a distance matrix from a directory of files using Cosine Distance;
+        directory: Directory containing files to compare 2 by 2;
+        output_file: File to output the result.
+    """
+    files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
+
+    if os.path.exists(output_file):
+        print("Matriz anterior encontrada. Carregando...")
+
+        old_files, old_matrix = extract_index_from_phylip(output_file)
+
+        # Identifica arquivos ainda não processados
+        processed_files = set(old_files)
+        new_files = [f for f in files if f not in processed_files]
+        
+        # Identifica arquivos que foram removidos
+        actual_formated_files = set(files)
+        removed_files = processed_files - actual_formated_files
+
+        if removed_files:
+            print(f"Arquivos removidos: {removed_files}")
+            print("\n \t ======= ERRO =======")
+            print("\t Os arquivos listados foram removidos do diretório. A matriz não pode ser atualizada.")
+            print("\t *** Soluções:")
+            print("\t 1) Delete o arquivo da matriz antiga para recalcular uma matriz do zero; ou")
+            print("\t 2) Adicione os vetores removidos ao diretório e execute novamente para atualizar a matriz existente.") 
+            print("\t ====================")
+            sys.exit(1)
+
+
+        if not new_files:
+            print("Nenhum novo arquivo encontrado. Nada a atualizar.")
+            return
+
+        print(f"Atualizando matriz com {len(new_files)} novos arquivos...")
+        updated_matrix, all_files = update_existing_matrix(directory, old_files, old_matrix, new_files)
+        export_phylip_file(updated_matrix, all_files, output_file)
+
+    else:
+        print("Nenhuma matriz existente. Iniciando do zero")
+
+        dist_matrix, filename_order = create_dist_matrix_from_zero(directory, files)
+        export_phylip_file(dist_matrix, filename_order, output_file)
+
+# ==========================================================
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--directory', help='File to output NCD result', required=True)
+    parser.add_argument('-d', '--directory', help='Directory with the files to be vetorized', required=True)
     parser.add_argument('-o', '--phylip-output', help='File to output tree result', default="./ncd-matrix.phylip")
     args = parser.parse_args()
 
-    dist_matrix, filename_order = create_dist_matrix(args.directory)
-
-    export_phylip_file(dist_matrix, filename_order, args.phylip_output)
-
+    create_phylip_coss_distance(args.directory, args.phylip_output)
 
 
 if __name__ == '__main__':

@@ -1,15 +1,22 @@
 #!/bin/bash
 
+# ====== ERROR HANDLING ======
+set -e # Exit immediately if a command exits with a non-zero status
+
+trap 'echo "An error occurred. Exiting."' ERR
+trap 'echo "Script interrupted. Exiting."' INT
+trap 'echo "Script terminated. Exiting."' TERM
+
 # ====== CONFIG ======
 python_ver="python"
 script="run_performance_test.py"
 base_seed=42   # Choose any integer number
 # -----------
 # You must set at least these four directories' paths in your machine 
-nastyware_dir="/home/ceao/Downloads/performance_test/performance_test/nastyware-analyser-fork"
-nastyware_files_mix="/home/ceao/Downloads/performance_test/performance_test/files/nastyware-files-mix"
-working_dir="/home/ceao/Downloads/performance_test/performance_test/files/nastyware-files-mix/pipeline"
-csv_output="/home/ceao/Downloads/performance_test/performance_test/performance_results.csv" # Output file's path
+nastyware_dir="/home/ceao/tcc/performance_tests/performance_test_1/nastyware-analyser-fork"
+nastyware_files_mix="/home/ceao/tcc/files/nastyware-files-mix/"
+working_dir="/home/ceao/tcc/files/nastyware-files-mix/pipeline"
+csv_output="/home/ceao/tcc/performance_tests/performance_test_1/performance_results.csv" # Output file's path
 # -----------
 
 train_raw_import_dir="${working_dir}/train-set/raw-import-files-mix/"
@@ -29,11 +36,10 @@ extra_malware_directory="${nastyware_files_mix}/extra-malware/"
 # ====== TEST PARAMETER AND OUTPUT ======
 # Set the parameters as you want to test
 
-train_percentage=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9)
-# train_percentage=(0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009) # Use for testing adjustments at the script
+train_percentage=0.9
 
 step=100        # Samples' increasing pace
-max_extra=1400   # Maximum extra malware samples
+max_extra=2698   # Maximum extra malware samples
 # extra_amount=0 --- Changes must be made in the first line of 'for' loop
 reps=3          # Times each sample's length will run to get its metrics
 
@@ -56,12 +62,21 @@ dirs=(
   "$extra_malware_directory"
 )
 
+dir_created=0
+
 for d in "${dirs[@]}"; do
   if [ ! -d "$d" ]; then
+    dir_created=1
     echo "Creating directory: $d"
     mkdir -p "$d"
+    echo "Directory created. Please check the paths and put the files in them."
   fi
 done
+
+if [ $dir_created -eq 1 ]; then
+  echo "ATTENTION: Some directories were created. Please check the paths and put the files in them."
+  exit 1
+fi
 
 # ====== RUN SCRIPT LOOP ======
 for i in "${train_percentage[@]}"; do
